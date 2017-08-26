@@ -47,22 +47,24 @@ function createAgent ( options ) {
   function flush () {
     // TODO send to server
 
-    dreq({
-      method: 'POST',
-      protocol: 'http',
-      host: 'localhost',
-      port: 3355,
-      data: lines.join( '\n' ),
-      headers: {
-        'giraffe': 'monkey'
-      }
-    }, function ( err, res, body ) {
-      if ( err ) {
-        console.log( err )
-      } else {
-        console.log( 'dreq: ' + res.statusCode )
-      }
-    })
+    if ( lines.length > 0 ) {
+      dreq({
+        method: 'POST',
+        protocol: 'http',
+        host: 'localhost',
+        port: 3355,
+        data: lines.join( '\n' ),
+        headers: options.headers || {}
+      }, function ( err, res, body ) {
+        if ( err ) {
+          console.log( err )
+        } else {
+          console.log(
+            'toukei agent: req sent, res.statusCode: ' + res.statusCode
+          )
+        }
+      })
+    }
   }
 
   function scheduleNextFlush () {
