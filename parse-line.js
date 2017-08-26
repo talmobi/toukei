@@ -1,13 +1,16 @@
 function parseLine ( line ) {
-  if ( typeof line !== 'string' || !line ) {
+  if ( typeof line !== 'string' ) {
     console.log( line )
     throw new Error( 'Invalid line protocol -- failed to parse' )
   }
 
+  var metrics = []
+
   line = line.trim()
 
   var lines = line.split( '\n' )
-  var metrics = []
+
+  if ( !line.length ) return []
 
   lines.forEach(function ( line ) {
     var parts = line.split( /[:|]/ )
