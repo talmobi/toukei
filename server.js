@@ -17,24 +17,26 @@ function aggregate ( options ) {
 
   // aggregate counters
   var counters = cache.counters
+
   for ( key in counters ) {
     var value = counters[ key ]
 
     // calculate "per second" rate
     var valuePerSecond = ( value / ( options.flushInterval / 1000 ) )
 
-    statString += ( 'stats.'        + key + ' ' + valuePerSecond + '\n' )
-    statString += ( 'stats_counts.' + key + ' ' + value          + '\n' )
+    statString += ( 'stats.counters.' + key + '.rate ' +   valuePerSecond + '\n' )
+    statString += ( 'stats.counters.' + key + '.count ' +  value          + '\n' )
 
     options.numStats += 1
   }
 
   // aggregate timers
   var timers = cache.timers
+
   for ( key in timers ) {
     if ( timers[ key ].length > 0 ) {
       var values = timers[ key ].sort(function ( a, b ) {
-        return ( a.value - b.value )
+        return ( a - b )
       })
 
       var count = values.length
@@ -55,7 +57,7 @@ function aggregate ( options ) {
 
       var message = ''
 
-      var key2, pctThreshold = [ 90, 70, 50 ]
+      var key2, pctThreshold = ( options.pctThreshold || [ 90 ] )
 
       for ( key2 in pctThreshold ) {
         var pct = pctThreshold[ key2 ]
@@ -92,6 +94,7 @@ function aggregate ( options ) {
 
   // aggregate gauges
   var gauges = cache.gauges
+
   for ( key in gauges ) {
     statString += ( 'stats.gauges.' + key + ' ' + gauges[ key ] + '\n' )
     options.numStats += 1
@@ -158,28 +161,31 @@ function createServer ( options ) {
 
       switch ( type ) {
         case 'c': // counters
+          value = Number( value )
           cache.counters[ name ] = ( cache.counters[ name ] || 0 )
-          cache.counters[ name ] += Number( value )
+          cache.counters[ name ] += value
           break
 
         case 'ms': // timers
+          value = Number( value )
           cache.timers[ name ] = ( cache.timers[ name ] || [] )
-          cache.timers[ name ].push( Number( value ) )
+          cache.timers[ name ].push( value )
           break
 
         case 'g': // gauges
+          value = Number( value )
           cache.gauges[ name ] = ( cache.gauges[ name ] || 0 )
           switch ( value[ 0 ] ) {
             case '+':
-              cache.gauges[ name ] += Number( value )
+              cache.gauges[ name ] += value
               break
 
             case '-':
-              cache.gauges[ name ] -= Number( value )
+              cache.gauges[ name ] -= value
               break
 
             default:
-              cache.gauges[ name ] = Number( value )
+              cache.gauges[ name ] = value
           }
           break
 
