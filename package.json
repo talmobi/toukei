@@ -1,0 +1,28 @@
+{
+  "name": "toukei",
+  "version": "0.0.0",
+  "description": "statsd inspired bare bones simple stats",
+  "main": "toukei.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "toukei"
+  ],
+  "author": "talmobi <talmo.christian@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/talmobi/toukei"
+  },
+  "bugs": {
+    "url": "https://github.com/talmobi/toukei/issues",
+    "email": "talmo.christian@gmail.com"
+  },
+  "dependencies": {
+    "body-parser": "^1.17.2",
+    "dasu": "0.0.19",
+    "express": "^4.15.4"
+  },
+  "devDependencies": {}
+}
