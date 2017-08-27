@@ -11,8 +11,12 @@
 var createAgent = require( './agent.js' )
 var createServer = require( './server.js' )
 
+
+var parseLine = require( './parse-line.js' )
+
 module.exports = {
   createAgent: createAgent,
-  createServer: createServer
+  createServer: createServer,
+  parseLine: parseLine
 }
 
