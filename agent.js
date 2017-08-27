@@ -33,7 +33,7 @@ function createAgent ( options ) {
   }
 
   address.host = ( options.host || bhost || 'localhost' )
-  address.port = ( options.port || bport || 3344 )
+  address.port = ( options.port || bport || 3355 )
   address.protocol = ( options.protocol || bprotocol || 'http' )
 
   address.method = 'POST'
@@ -50,11 +50,16 @@ function createAgent ( options ) {
     if ( lines.length > 0 ) {
       dreq({
         method: 'POST',
-        protocol: 'http',
-        host: 'localhost',
-        port: 3355,
-        data: lines.join( '\n' ),
-        headers: options.headers || {}
+
+        protocol: address.protocol,
+
+        host: address.host,
+        port: address.port,
+        path: address.path,
+
+        headers: options.headers || {},
+
+        data: lines.join( '\n' )
       }, function ( err, res, body ) {
         if ( err ) {
           console.log( err )
