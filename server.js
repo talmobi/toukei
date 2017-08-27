@@ -2,10 +2,24 @@ var http = require( 'http' )
 
 var express = require( 'express' )
 var bodyParser = require( 'body-parser' )
+var cors = require( 'cors' )
 
 var parseLine = require( './parse-line.js' )
 
 var MAX_METRICS_BEFORE_FLUSH = 1000
+
+function parseStatLine ( statLine ) {
+  var map = {}
+  statLine.split( '\n' ).forEach( function ( line ) {
+    var parts = line.split( ' ' )
+    var key = parts[ 0 ]
+    var value = parts[ 1 ]
+
+    map[ key ] = Number( value )
+  })
+
+  return map
+}
 
 function aggregate ( options ) {
   var statString = ''
@@ -111,6 +125,20 @@ function aggregate ( options ) {
 
   // TODO push/send somewhere else?
 
+  // TODO cache stats?
+  cache.storage = (
+    cache.storage ||
+    require( 'short-storage' ).createTubeStorage({
+      ttl: 1000 * 60 * 15, // default ttl 15 min
+      max_length: 255 // but cap it at a reasonable limit
+    })
+  )
+
+  cache.storage.push({
+    timestamp: Date.now(),
+    statString: statString
+  })
+
   // return aggregated data
   return statString
 }
@@ -140,12 +168,15 @@ function createServer ( options ) {
   var app = express()
   var server = http.createServer( app )
 
+  // Allow cors
+  app.use( cors() )
+
   app.use( function ( req, res, next ) {
     console.log( 'incoming request from: ' + req.ip )
     next()
   })
 
-  app.use( bodyParser.text(), function ( req, res ) {
+  app.post( '/api/toukei', bodyParser.text(), function ( req, res ) {
     // console.log( req.body )
 
     // console.log( 'giraffe header: ' + req.headers.giraffe )
@@ -195,6 +226,24 @@ function createServer ( options ) {
     })
 
     res.status( 200 ).end()
+  })
+
+  app.get( '/api/toukei', function ( req, res ) {
+    var storage = options.cache && options.cache.storage
+    if ( storage ) {
+      var stats = storage.pull()
+      res.status( 200 ).json({
+        statusCode: 200,
+        message: 'success - got recent stats',
+        stats: stats
+      }).end()
+    } else {
+      res.status( 200 ).json({
+        statusCode: 200,
+        message: 'success - no stats seem to have been cached yet',
+        stats: []
+      }).end()
+    }
   })
 
   server.listen( options.port, function () {
