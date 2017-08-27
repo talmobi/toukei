@@ -21,8 +21,10 @@
   },
   "dependencies": {
     "body-parser": "^1.17.2",
+    "cors": "^2.8.4",
     "dasu": "0.0.19",
-    "express": "^4.15.4"
+    "express": "^4.15.4",
+    "short-storage": "0.0.7"
   },
   "devDependencies": {}
 }
