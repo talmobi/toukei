@@ -1,4 +1,4 @@
-#　統計　toukei - etsy/statsd inspired bare bones simple stat spitter and swallower
+#　統計　toukei - etsy/statsd inspired bare bones simple stat gathering and reporting
 
 ## Simple to use
 TODO

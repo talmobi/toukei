@@ -1,7 +1,7 @@
 {
   "name": "toukei",
   "version": "0.0.0",
-  "description": "statsd inspired bare bones simple stats",
+  "description": "statsd inspired bare bones simple stat gathering and reporting",
   "main": "toukei.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
