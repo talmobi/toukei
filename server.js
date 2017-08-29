@@ -124,6 +124,7 @@ function aggregate ( options ) {
   console.log( ' ==================== \n' )
 
   // TODO push/send somewhere else?
+  options.io && options.io.emit( 'flush', statString )
 
   // TODO cache stats?
   cache.storage = (
@@ -143,12 +144,154 @@ function aggregate ( options ) {
   return statString
 }
 
-function schedule ( options ) {
+function scheduleFlush ( options ) {
   aggregate( options )
 
   setTimeout( function () {
-    schedule( options )
-  }, 1000 * 10 )
+    scheduleFlush( options )
+  }, options.flushInterval )
+}
+
+function calculateSnapshot ( options ) {
+  var snapshots = options.snapshots
+
+  var results = {
+    counters: {},
+    timers: {},
+    gauges: {}
+  }
+
+  var metricNames = {}
+
+  for ( type in results ) {
+    var snapshot = options.snapshots[ type ] // counters, timers, gauges
+
+    for ( key in snapshot ) {
+      if ( snapshot[ key ].length > 0 ) {
+        metricNames[ key ] = true
+
+        var values = snapshot[ key ]
+        var count = values.length
+
+        var sum = 0
+        for ( var i = 0; i < count; i++ ) {
+          var value = values[ i ]
+          sum += value
+        }
+
+        var avg = Number( sum / count )
+
+        if ( typeof avg === 'number' && Number.isNaN( avg ) === false ) {
+          results[ type ][ key ] = avg
+        } else {
+          // probably string value - simply report latest/last value
+          results[ type ][ key ] = values[ count - 1 ]
+        }
+      }
+    }
+  }
+
+  Object.keys( metricNames ).forEach( function ( name ) {
+    var counter = results.counters[ name ]
+    var timer = results.timers[ name ]
+    var gauge = results.gauges[ name ]
+
+    var data = {}
+    if ( counter != null ) data.counter = counter
+    if ( timer != null ) data.timer = timer
+    if ( gauge != null ) data.gauge = gauge
+
+    console.log( 'emitting: ' + name )
+    console.log( data )
+    console.log( ' - - - - - - - - - - ' )
+
+    options.io && options.io.emit( name, data )
+  })
+
+  // clear snapshots
+  options.snapshots.counters = {}
+  options.snapshots.timers = {}
+  options.snapshots.gauges = {}
+
+  /*
+  var counters = snapshots.counters
+  for ( key in counters ) {
+    if ( counters[ key ].length > 0 ) {
+      var values = counters[ key ]
+      var count = values.length
+
+      var sum = 0
+      for ( var i = 0; i < count; i++ ) {
+        var value = values[ i ]
+        sum += value
+      }
+
+      var avg = Number( sum / count )
+
+      if ( typeof avg === 'number' && Number.isNaN( avg ) === false ) {
+        results.counters[ key ] = avg
+      } else {
+        // probably string value - simply report latest/last value
+        results.counters[ key ] = values[ count - 1 ]
+      }
+    }
+  }
+
+  var timers = snapshots.timers
+  for ( key in timers ) {
+    if ( timers[ key ].length > 0 ) {
+      var values = timers[ key ]
+      var count = values.length
+
+      var sum = 0
+      for ( var i = 0; i < count; i++ ) {
+        var value = values[ i ]
+        sum += value
+      }
+
+      var avg = Number( sum / count )
+
+      if ( typeof avg === 'number' && Number.isNaN( avg ) === false ) {
+        results.timers[ key ] = avg
+      } else {
+        // probably string value - simply report latest/last value
+        results.timers[ key ] = values[ count - 1 ]
+      }
+    }
+  }
+
+  var gauges = snapshots.gauges
+  for ( key in gauges ) {
+    if ( gauges[ key ].length > 0 ) {
+      var values = gauges[ key ]
+      var count = values.length
+
+      var sum = 0
+      for ( var i = 0; i < count; i++ ) {
+        var value = values[ i ]
+        sum += value
+      }
+
+      var avg = Number( sum / count )
+
+      if ( typeof avg === 'number' && Number.isNaN( avg ) === false ) {
+        results.gauges[ key ] = avg
+      } else {
+        // probably string value - simply report latest/last value
+        results.gauges[ key ] = values[ count - 1 ]
+      }
+    }
+  }
+
+  */
+}
+
+function scheduleSnapshot ( options ) {
+  calculateSnapshot( options )
+
+  setTimeout( function () {
+    scheduleSnapshot( options )
+  }, options.emitInterval )
 }
 
 function createServer ( options ) {
@@ -160,13 +303,28 @@ function createServer ( options ) {
     gauges: {}
   }
 
+  // momentary snapshot averages
+  var snapshots = options.snapshots = {
+    counters: {},
+    timers: {},
+    gauges: {}
+  }
+
   options.numStats = 0
 
   options.port = options.port || 3355
   options.flushInterval = options.flushInterval || ( 1000 * 10 )
+  options.emitInterval = options.emitInterval || ( 1000 * 1 )
+
+  // options.flushInterval = 1000
 
   var app = express()
   var server = http.createServer( app )
+  var io = require( 'socket.io' )( server )
+
+  options.app = app
+  options.server = server
+  options.io = io
 
   // Allow cors
   app.use( cors() )
@@ -185,38 +343,61 @@ function createServer ( options ) {
 
     metrics.forEach( function ( metric ) {
       var name = metric.name
-      var value = metric.value
       var type = metric.type
 
       var timestamp = metric.timestamp
 
+
+      var value = Number( metric.value )
+      var isNumber = ( typeof value === 'number' && Number.isNaN( value ) === false )
+
+      if ( !isNumber ) {
+        value = metric.value // probably string?
+      }
+
       switch ( type ) {
         case 'c': // counters
-          value = Number( value )
-          cache.counters[ name ] = ( cache.counters[ name ] || 0 )
-          cache.counters[ name ] += value
+          if ( isNumber ) {
+            cache.counters[ name ] = ( cache.counters[ name ] || 0 )
+            cache.counters[ name ] += value
+
+            snapshots.counters[ name ] = ( snapshots.counters[ name ] || [] )
+            snapshots.counters[ name ].push( value )
+          }
           break
 
         case 'ms': // timers
-          value = Number( value )
-          cache.timers[ name ] = ( cache.timers[ name ] || [] )
-          cache.timers[ name ].push( value )
+          if ( isNumber ) {
+            cache.timers[ name ] = ( cache.timers[ name ] || [] )
+            cache.timers[ name ].push( value )
+
+            snapshots.timers[ name ] = ( snapshots.timers[ name ] || [] )
+            snapshots.timers[ name ].push( value )
+          }
           break
 
         case 'g': // gauges
-          value = Number( value )
-          cache.gauges[ name ] = ( cache.gauges[ name ] || 0 )
-          switch ( value[ 0 ] ) {
-            case '+':
-              cache.gauges[ name ] += value
-              break
+          snapshots.gauges[ name ] = ( snapshots.gauges[ name ] || [] )
+          snapshots.gauges[ name ].push( value )
 
-            case '-':
-              cache.gauges[ name ] -= value
-              break
+          if ( isNumber ) {
+            cache.gauges[ name ] = ( cache.gauges[ name ] || 0 )
 
-            default:
-              cache.gauges[ name ] = value
+            switch ( metric.value[ 0 ] ) {
+              case '+':
+                cache.gauges[ name ] += value
+                break
+
+              case '-':
+                cache.gauges[ name ] -= value
+                break
+
+              default:
+                cache.gauges[ name ] = value
+            }
+          } else {
+            cache.gauges[ name ] = ( cache.gauges[ name ] || '' )
+            cache.gauges[ name ] = value
           }
           break
 
@@ -228,10 +409,10 @@ function createServer ( options ) {
     res.status( 200 ).end()
   })
 
-  app.get( '/api/toukei', function ( req, res ) {
+  app.get( '/api/toukei/:limit', function ( req, res ) {
     var storage = options.cache && options.cache.storage
     if ( storage ) {
-      var stats = storage.pull()
+      var stats = storage.pull( req.params.limit || undefined )
       res.status( 200 ).json({
         statusCode: 200,
         message: 'success - got recent stats',
@@ -246,9 +427,18 @@ function createServer ( options ) {
     }
   })
 
+  io.on( 'connection', function ( socket ) {
+    console.log( 'socket client connected, sockets.length: ' + io.clients.length )
+
+    socket.on( 'disconnect', function () {
+      console.log( 'socket client disconnected, sockets.length: ' + io.clients.length )
+    })
+  })
+
   server.listen( options.port, function () {
     console.log( 'toukei server listening on port: ' + server.address().port )
-    schedule( options ) // start flushing
+    scheduleFlush( options ) // start flushing
+    scheduleSnapshot( options ) // start snapshots
   })
 }
 
