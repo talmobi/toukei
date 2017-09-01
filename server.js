@@ -147,7 +147,7 @@ function aggregate ( options ) {
 function scheduleFlush ( options ) {
   aggregate( options )
 
-  setTimeout( function () {
+  options.running && setTimeout( function () {
     scheduleFlush( options )
   }, options.flushInterval )
 }
@@ -191,22 +191,24 @@ function calculateSnapshot ( options ) {
     }
   }
 
-  Object.keys( metricNames ).forEach( function ( name ) {
-    var counter = results.counters[ name ]
-    var timer = results.timers[ name ]
-    var gauge = results.gauges[ name ]
+  options.io && options.io.volatile.emit( 'snapshot', results )
 
-    var data = {}
-    if ( counter != null ) data.counter = counter
-    if ( timer != null ) data.timer = timer
-    if ( gauge != null ) data.gauge = gauge
+  // Object.keys( metricNames ).forEach( function ( name ) {
+  //   var counter = results.counters[ name ]
+  //   var timer = results.timers[ name ]
+  //   var gauge = results.gauges[ name ]
 
-    console.log( 'emitting: ' + name )
-    console.log( data )
-    console.log( ' - - - - - - - - - - ' )
+  //   var data = {}
+  //   if ( counter != null ) data.counter = counter
+  //   if ( timer != null ) data.timer = timer
+  //   if ( gauge != null ) data.gauge = gauge
 
-    options.io && options.io.emit( name, data )
-  })
+  //   console.log( 'emitting: ' + name )
+  //   console.log( data )
+  //   console.log( ' - - - - - - - - - - ' )
+
+  //   options.io && options.io.emit( name, data )
+  // })
 
   // clear snapshots
   options.snapshots.counters = {}
@@ -289,13 +291,15 @@ function calculateSnapshot ( options ) {
 function scheduleSnapshot ( options ) {
   calculateSnapshot( options )
 
-  setTimeout( function () {
+  options.running && setTimeout( function () {
     scheduleSnapshot( options )
-  }, options.emitInterval )
+  }, options.snapshotInterval )
 }
 
 function createServer ( options ) {
   options = options || {}
+
+  options.running = true
 
   var cache = options.cache = {
     counters: {},
@@ -312,9 +316,11 @@ function createServer ( options ) {
 
   options.numStats = 0
 
-  options.port = options.port || 3355
+  options.port = ( options.port || 3355 )
+  options.host = ( options.host || '0.0.0.0' )
+
   options.flushInterval = options.flushInterval || ( 1000 * 10 )
-  options.emitInterval = options.emitInterval || ( 1000 * 1 )
+  options.snapshotInterval = options.snapshotInterval || ( 1000 * 1 )
 
   // options.flushInterval = 1000
 
@@ -330,7 +336,7 @@ function createServer ( options ) {
   app.use( cors() )
 
   app.use( function ( req, res, next ) {
-    console.log( 'incoming request from: ' + req.ip )
+    options.verbose && console.log( 'incoming request from: ' + req.ip )
     next()
   })
 
@@ -428,18 +434,30 @@ function createServer ( options ) {
   })
 
   io.on( 'connection', function ( socket ) {
-    console.log( 'socket client connected, sockets.length: ' + io.clients.length )
+    var len = io.clients().server.engine.clientsCount
+    console.log( 'obapp server: socket client connected, sockets.length: ' + len )
 
     socket.on( 'disconnect', function () {
-      console.log( 'socket client disconnected, sockets.length: ' + io.clients.length )
+      var len = io.clients().server.engine.clientsCount
+      console.log( 'obapp server: socket client disconnected, sockets.length: ' + len )
     })
   })
 
-  server.listen( options.port, function () {
+  server.listen( options.port, options.host, function () {
     console.log( 'toukei server listening on port: ' + server.address().port )
     scheduleFlush( options ) // start flushing
     scheduleSnapshot( options ) // start snapshots
   })
+
+  return {
+    close: function () {
+      options.running = false
+      server.close()
+    },
+    address: function () {
+      return server.address()
+    }
+  }
 }
 
 module.exports = createServer
