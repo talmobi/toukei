@@ -35,7 +35,6 @@ function parseLine ( line ) {
         throw new Error( 'unrecognized metric type: ' + type )
     }
 
-
     metrics.push({
       name: name,
       value: value,
