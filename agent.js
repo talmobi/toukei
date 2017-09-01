@@ -64,9 +64,11 @@ function createAgent ( options ) {
         if ( err ) {
           console.log( err )
         } else {
-          options.verbose && console.log(
-            'toukei agent: req sent, res.statusCode: ' + res.statusCode
-          )
+          if ( options.verbose ) {
+            console.log(
+              'toukei agent: req sent, res.statusCode: ' + res.statusCode
+            )
+          }
         }
       })
     }
