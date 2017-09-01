@@ -8,14 +8,16 @@ var parseLine = require( './parse-line.js' )
 
 var MAX_METRICS_BEFORE_FLUSH = 1000
 
-function parseStatLine ( statLine ) {
+function parseStatString ( statString ) {
   var map = {}
-  statLine.split( '\n' ).forEach( function ( line ) {
+  statString.split( '\n' ).forEach( function ( line ) {
     var parts = line.split( ' ' )
     var key = parts[ 0 ]
     var value = parts[ 1 ]
 
-    map[ key ] = Number( value )
+    var number = Number( value )
+
+    map[ key ] = isNaN( number ) ? value : number
   })
 
   return map
@@ -24,6 +26,7 @@ function parseStatLine ( statLine ) {
 function aggregate ( options ) {
   var statString = ''
 
+  console.log()
   console.log( ' ==================== ' )
   console.log( ' === toukei stats === ' )
 
@@ -124,7 +127,10 @@ function aggregate ( options ) {
   console.log( ' ==================== \n' )
 
   // TODO push/send somewhere else?
-  options.io && options.io.emit( 'flush', statString )
+  options.io && options.io.emit(
+    'flush',
+    parseStatString( statString )
+  )
 
   // TODO cache stats?
   cache.storage = (
@@ -336,7 +342,11 @@ function createServer ( options ) {
   app.use( cors() )
 
   app.use( function ( req, res, next ) {
-    options.verbose && console.log( 'incoming request from: ' + req.ip )
+    if ( options.verbose ) {
+      console.log( 'incoming request from: ' + req.ip )
+    } else {
+      process.stdout.write( '.' )
+    }
     next()
   })
 
