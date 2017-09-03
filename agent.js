@@ -39,7 +39,7 @@ function createAgent ( options ) {
   address.method = 'POST'
   address.path = '/api/toukei'
 
-  options.flushInterval = ( options.flushInterval || 1000 )
+  options.flushInterval = ( options.flushInterval || 333 )
 
   var lines = []
 
