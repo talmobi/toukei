@@ -6,10 +6,16 @@ var cors = require( 'cors' )
 
 var parseLine = require( './parse-line.js' )
 
-var MAX_METRICS_BEFORE_FLUSH = 1000
+var cpuTimer = require( 'cpu-timer' )
+
+var FLUSH_STORAGE_TIME = ( 1000 * 60 * 60 ) // 1 hour
+
+var MAX_STORAGE_LENGTH = ( FLUSH_STORAGE_TIME / ( 1000 * 10 ) )
+var MAX_STORAGE_BUFFER_LENGTH = ( ( 1000 * 10 ) * 10 )
+var MAX_STORAGE_LIMIT = ( MAX_STORAGE_LENGTH + MAX_STORAGE_BUFFER_LENGTH )
 
 function parseStatString ( statString ) {
-  var map = {}
+  var json = {}
   statString.split( '\n' ).forEach( function ( line ) {
     var parts = line.split( ' ' )
     var key = parts[ 0 ]
@@ -17,20 +23,21 @@ function parseStatString ( statString ) {
 
     var number = Number( value )
 
-    map[ key ] = isNaN( number ) ? value : number
+    json[ key ] = isNaN( number ) ? value : number
   })
 
-  return map
+  return json
 }
 
-function aggregate ( options ) {
+function flush ( opts ) {
   var statString = ''
 
-  console.log()
-  console.log( ' ==================== ' )
-  console.log( ' === toukei stats === ' )
+  var now = Date.now()
+  statString += ( 'stats.timestamp ' + now + '\n' )
 
-  var cache = options.cache
+  var numStats = 0
+  var interval = opts.interval
+  var cache = opts.cache
 
   // aggregate counters
   var counters = cache.counters
@@ -39,12 +46,12 @@ function aggregate ( options ) {
     var value = counters[ key ]
 
     // calculate "per second" rate
-    var valuePerSecond = ( value / ( options.flushInterval / 1000 ) )
+    var valuePerSecond = ( value / ( interval / 1000 ) )
 
     statString += ( 'stats.counters.' + key + '.rate ' +   valuePerSecond + '\n' )
     statString += ( 'stats.counters.' + key + '.count ' +  value          + '\n' )
 
-    options.numStats += 1
+    numStats += 1
   }
 
   // aggregate timers
@@ -74,7 +81,7 @@ function aggregate ( options ) {
 
       var message = ''
 
-      var key2, pctThreshold = ( options.pctThreshold || [ 90 ] )
+      var key2, pctThreshold = ( opts.pctThreshold || [ 95 ] )
 
       for ( key2 in pctThreshold ) {
         var pct = pctThreshold[ key2 ]
@@ -105,7 +112,7 @@ function aggregate ( options ) {
       message += 'stats.timers.' + key + '.mean ' +   mean  + '\n';
       statString += message
 
-      options.numStats += 1
+      numStats += 1
     }
   }
 
@@ -114,188 +121,132 @@ function aggregate ( options ) {
 
   for ( key in gauges ) {
     statString += ( 'stats.gauges.' + key + ' ' + gauges[ key ] + '\n' )
-    options.numStats += 1
+    numStats += 1
   }
 
   // clear cache
+  // options.cache.counters = {}
+  // options.cache.timers = {}
+  // options.cache.gauges = {}
+
+  // TODO push/send somewhere else?
+  // options.io && options.io.emit(
+  //   'flush',
+  //   parseStatString( statString )
+  // )
+
+  // options.flushCounter++
+
+  // options.storage.push( statString )
+
+  // if ( options.storage.length > ( MAX_STORAGE_LIMIT ) ) {
+  //   // if size is at its limit, cut off the extra values
+  //   options.storage.splice( 0, MAX_STORAGE_BUFFER_LENGTH )
+  // }
+
+  // cache.storage && cache.storage.push({
+  //   timestamp: Date.now(),
+  //   statString: statString
+  // })
+
+  // return aggregated data
+  return {
+    numStats: numStats,
+    statString: statString
+  }
+}
+
+function condense ( options ) {
+  // TODO?
+}
+
+function scheduleFlush ( options ) {
+  var stats = flush({
+    cache: options.cache,
+    interval: options.flushInterval
+  })
+
+  // increment counters ( TODO not used for anything yet.. )
+  options.flushCounter++
+  options.numStats += stats.numStats
+
+  // clear cache after flush
   options.cache.counters = {}
   options.cache.timers = {}
   options.cache.gauges = {}
 
-  console.log( statString )
-  console.log( ' === ' + ( new Date() ) + ' === ' )
-  console.log( ' ==================== \n' )
+  var jsonStatString = parseStatString( stats.statString )
 
-  // TODO push/send somewhere else?
   options.io && options.io.emit(
     'flush',
-    parseStatString( statString )
+    jsonStatString
   )
 
-  // TODO cache stats?
-  cache.storage = (
-    cache.storage ||
-    require( 'short-storage' ).createTubeStorage({
-      ttl: 1000 * 60 * 15, // default ttl 15 min
-      max_length: 255 // but cap it at a reasonable limit
-    })
-  )
-
-  cache.storage.push({
-    timestamp: Date.now(),
-    statString: statString
+  options.storage.push({
+    statString: stats.statString,
+    jsonStatString: jsonStatString
   })
 
-  // return aggregated data
-  return statString
-}
+  if ( options.storage.length > ( MAX_STORAGE_LIMIT ) ) {
+    // if size is at its limit, cut off the extra values
+    options.storage.splice( 0, MAX_STORAGE_BUFFER_LENGTH )
+    console.log( 'cut off extra flushes from storage' )
+  }
 
-function scheduleFlush ( options ) {
-  aggregate( options )
+  // console log it
+  console.log()
+  console.log( ' ==================== ' )
+  console.log( ' === toukei stats === ' )
+  console.log( stats.statString )
+  console.log( ' === ' + ( new Date( jsonStatString[ 'stats.timestamp' ] ) ) + ' === ' )
+  console.log( ' ==================== ' )
+  console.log()
 
   options.running && setTimeout( function () {
     scheduleFlush( options )
   }, options.flushInterval )
 }
 
-function calculateSnapshot ( options ) {
-  var snapshots = options.snapshots
+function scheduleSelfReport ( options ) {
+  if ( options.clearCpuTimer ) options.clearCpuTimer()
 
-  var results = {
-    counters: {},
-    timers: {},
-    gauges: {}
-  }
+  options.statsAgent = (
+    options.statsAgent ||
+    require( './agent.js' )({
+      host: options.host,
+      port: options.port
+    })
+  )
 
-  var metricNames = {}
-
-  for ( type in results ) {
-    var snapshot = options.snapshots[ type ] // counters, timers, gauges
-
-    for ( key in snapshot ) {
-      if ( snapshot[ key ].length > 0 ) {
-        metricNames[ key ] = true
-
-        var values = snapshot[ key ]
-        var count = values.length
-
-        var sum = 0
-        for ( var i = 0; i < count; i++ ) {
-          var value = values[ i ]
-          sum += value
-        }
-
-        var avg = Number( sum / count )
-
-        if ( typeof avg === 'number' && Number.isNaN( avg ) === false ) {
-          results[ type ][ key ] = avg
-        } else {
-          // probably string value - simply report latest/last value
-          results[ type ][ key ] = values[ count - 1 ]
-        }
-      }
+  options.clearCpuTimer = cpuTimer.setInterval( function ( cpu ) {
+    if ( options.running ) {
+      console.log( 'toukei.cpuPercent: ' + cpu.usage )
+      options.statsAgent.send(
+        'toukei.cpuPercent:' + cpu.usage + '|ms'
+      )
+    } else {
+      options.clearCpuTimer()
     }
-  }
-
-  options.io && options.io.volatile.emit( 'snapshot', results )
-
-  // Object.keys( metricNames ).forEach( function ( name ) {
-  //   var counter = results.counters[ name ]
-  //   var timer = results.timers[ name ]
-  //   var gauge = results.gauges[ name ]
-
-  //   var data = {}
-  //   if ( counter != null ) data.counter = counter
-  //   if ( timer != null ) data.timer = timer
-  //   if ( gauge != null ) data.gauge = gauge
-
-  //   console.log( 'emitting: ' + name )
-  //   console.log( data )
-  //   console.log( ' - - - - - - - - - - ' )
-
-  //   options.io && options.io.emit( name, data )
-  // })
-
-  // clear snapshots
-  options.snapshots.counters = {}
-  options.snapshots.timers = {}
-  options.snapshots.gauges = {}
-
-  /*
-  var counters = snapshots.counters
-  for ( key in counters ) {
-    if ( counters[ key ].length > 0 ) {
-      var values = counters[ key ]
-      var count = values.length
-
-      var sum = 0
-      for ( var i = 0; i < count; i++ ) {
-        var value = values[ i ]
-        sum += value
-      }
-
-      var avg = Number( sum / count )
-
-      if ( typeof avg === 'number' && Number.isNaN( avg ) === false ) {
-        results.counters[ key ] = avg
-      } else {
-        // probably string value - simply report latest/last value
-        results.counters[ key ] = values[ count - 1 ]
-      }
-    }
-  }
-
-  var timers = snapshots.timers
-  for ( key in timers ) {
-    if ( timers[ key ].length > 0 ) {
-      var values = timers[ key ]
-      var count = values.length
-
-      var sum = 0
-      for ( var i = 0; i < count; i++ ) {
-        var value = values[ i ]
-        sum += value
-      }
-
-      var avg = Number( sum / count )
-
-      if ( typeof avg === 'number' && Number.isNaN( avg ) === false ) {
-        results.timers[ key ] = avg
-      } else {
-        // probably string value - simply report latest/last value
-        results.timers[ key ] = values[ count - 1 ]
-      }
-    }
-  }
-
-  var gauges = snapshots.gauges
-  for ( key in gauges ) {
-    if ( gauges[ key ].length > 0 ) {
-      var values = gauges[ key ]
-      var count = values.length
-
-      var sum = 0
-      for ( var i = 0; i < count; i++ ) {
-        var value = values[ i ]
-        sum += value
-      }
-
-      var avg = Number( sum / count )
-
-      if ( typeof avg === 'number' && Number.isNaN( avg ) === false ) {
-        results.gauges[ key ] = avg
-      } else {
-        // probably string value - simply report latest/last value
-        results.gauges[ key ] = values[ count - 1 ]
-      }
-    }
-  }
-
-  */
+  }, 1000 )
 }
 
 function scheduleSnapshot ( options ) {
-  calculateSnapshot( options )
+  var stats = flush({
+    cache: options.snapshotCache,
+    interval: options.snapshotInterval
+  })
+
+  // clear snapshot cache after flush
+  options.snapshotCache.counters = {}
+  options.snapshotCache.timers = {}
+  options.snapshotCache.gauges = {}
+
+  var jsonStatString = parseStatString( stats.statString )
+
+  options.io && options.io.emit(
+    'snapshot',
+    jsonStatString
+  )
 
   options.running && setTimeout( function () {
     scheduleSnapshot( options )
@@ -314,7 +265,7 @@ function createServer ( options ) {
   }
 
   // momentary snapshot averages
-  var snapshots = options.snapshots = {
+  var snapshots = options.snapshotCache = {
     counters: {},
     timers: {},
     gauges: {}
@@ -323,12 +274,26 @@ function createServer ( options ) {
   options.numStats = 0
 
   options.port = ( options.port || 3355 )
-  options.host = ( options.host || '0.0.0.0' )
+  options.host = ( options.host || '127.0.0.1' )
+
+  options.flushCounter = 0
 
   options.flushInterval = options.flushInterval || ( 1000 * 10 )
   options.snapshotInterval = options.snapshotInterval || ( 1000 * 1 )
 
-  // options.flushInterval = 1000
+  if ( options.flushInterval <= options.snapshotInterval ) {
+    var msg = (
+      'options.flushInterval was set lower than options.snapshotInterval' +
+      '. This is unintended behaviour.'
+    )
+    throw new Error( msg )
+  }
+
+  MAX_STORAGE_LENGTH = ( FLUSH_STORAGE_TIME / ( options.flushInterval ) )
+  MAX_STORAGE_BUFFER_LENGTH = ( ( options.flushInterval ) * 10 )
+  MAX_STORAGE_LIMIT = ( MAX_STORAGE_LENGTH + MAX_STORAGE_BUFFER_LENGTH )
+
+  options.storage = []
 
   var app = express()
   var server = http.createServer( app )
@@ -457,6 +422,8 @@ function createServer ( options ) {
     console.log( 'toukei server listening on port: ' + server.address().port )
     scheduleFlush( options ) // start flushing
     scheduleSnapshot( options ) // start snapshots
+
+    scheduleSelfReport( options )
   })
 
   return {
