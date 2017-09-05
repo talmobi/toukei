@@ -220,9 +220,12 @@ function scheduleSelfReport ( options ) {
 
   options.clearCpuTimer = cpuTimer.setInterval( function ( cpu ) {
     if ( options.running ) {
-      console.log( 'toukei.cpuPercent: ' + cpu.usage )
+      // console.log( 'toukei.cpuPercent: ' + cpu.usage )
       options.statsAgent.send(
         'toukei.cpuPercent:' + cpu.usage + '|ms'
+      )
+      options.statsAgent.send(
+        'toukei.system.cpuPercent:' + cpu.average + '|ms'
       )
     } else {
       options.clearCpuTimer()
