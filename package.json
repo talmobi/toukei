@@ -25,7 +25,6 @@
     "cpu-timer": "0.0.1",
     "dasu": "0.0.19",
     "express": "^4.15.4",
-    "short-storage": "0.0.7",
     "socket.io": "^2.0.3"
   },
   "devDependencies": {}
