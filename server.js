@@ -293,7 +293,7 @@ function createServer ( options ) {
   }
 
   MAX_STORAGE_LENGTH = ( FLUSH_STORAGE_TIME / ( options.flushInterval ) )
-  MAX_STORAGE_BUFFER_LENGTH = ( ( options.flushInterval ) * 10 )
+  MAX_STORAGE_BUFFER_LENGTH = ( 10 ) // buffer for 10 flush intervals before splicing
   MAX_STORAGE_LIMIT = ( MAX_STORAGE_LENGTH + MAX_STORAGE_BUFFER_LENGTH )
 
   options.storage = []
