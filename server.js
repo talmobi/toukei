@@ -5,6 +5,7 @@ var bodyParser = require( 'body-parser' )
 var cors = require( 'cors' )
 
 var parseLine = require( './parse-line.js' )
+var createAgent = require( './agent.js' )
 
 var cpuTimer = require( 'cpu-timer' )
 
@@ -195,16 +196,38 @@ function scheduleFlush ( options ) {
 
   // console log it
   console.log()
-  console.log( ' ==================== ' )
-  console.log( ' === toukei stats === ' )
-  console.log( stats.statString )
+  // console.log( ' ==================== ' )
+
+  if ( options.logFilter ) {
+    console.log( ' === toukei stats === logFilter: [' + options.logFilter.join( ',' ) + ']' )
+  } else {
+    console.log( ' === toukei stats === ' )
+  }
+
+  var logString = stats.statString
+
+  if ( options.logFilter ) {
+    var lines = logString.split( '\n' ).filter( function ( line ) {
+      var shouldKeep = false
+      options.logFilter.forEach( function ( filter ) {
+        if ( line.indexOf( filter ) >= 0 ) shouldKeep = true
+      } )
+      return shouldKeep
+    } )
+    logString = lines.join( '\n' )
+  }
+  console.log( logString )
+
   console.log( ' === ' + ( new Date( jsonStatString[ 'stats.timestamp' ] ) ) + ' === ' )
-  console.log( ' ==================== ' )
+  // console.log( ' ==================== ' )
   console.log()
 
-  options.running && setTimeout( function () {
-    scheduleFlush( options )
-  }, options.flushInterval )
+  if ( options.running ) {
+    clearTimeout( options._flushTimeout )
+    options._flushTimeout = setTimeout( function () {
+      scheduleFlush( options )
+    }, options.flushInterval )
+  }
 }
 
 function scheduleSelfReport ( options ) {
@@ -212,7 +235,7 @@ function scheduleSelfReport ( options ) {
 
   options.statsAgent = (
     options.statsAgent ||
-    require( './agent.js' )({
+    createAgent({
       host: options.host,
       port: options.port
     })
@@ -251,15 +274,22 @@ function scheduleSnapshot ( options ) {
     jsonStatString
   )
 
-  options.running && setTimeout( function () {
-    scheduleSnapshot( options )
-  }, options.snapshotInterval )
+  if ( options.running ) {
+    clearTimeout( options._snapshotTimeout )
+    options._snapshotTimeout = setTimeout( function () {
+      scheduleSnapshot( options )
+    }, options.snapshotInterval )
+  }
 }
 
-function createServer ( options ) {
+function createServer ( options, callback ) {
   options = options || {}
 
-  options.running = true
+  if ( typeof options.callback === 'function' ) callback = options.callback
+
+  if ( typeof callback !== 'function' ) {
+    throw new Error( 'no callback function found!' )
+  }
 
   var cache = options.cache = {
     counters: {},
@@ -276,7 +306,8 @@ function createServer ( options ) {
 
   options.numStats = 0
 
-  options.port = ( options.port || 3355 )
+  if ( options.port == null ) options.port = 3355
+
   options.host = ( options.host || '127.0.0.1' )
 
   options.flushCounter = 0
@@ -421,23 +452,49 @@ function createServer ( options ) {
     })
   })
 
-  server.listen( options.port, options.host, function () {
-    console.log( 'toukei server listening on port: ' + server.address().port )
-    scheduleFlush( options ) // start flushing
-    scheduleSnapshot( options ) // start snapshots
-
-    scheduleSelfReport( options )
-  })
-
-  return {
+  var api = {
     close: function () {
       options.running = false
       server.close()
     },
+
     address: function () {
       return server.address()
-    }
+    },
+
+    // underlying http server
+    _server: server
   }
+
+  server.on( 'close', function () {
+    options.running = false
+  } )
+
+  server.listen( options.port, options.host, function () {
+    options.running = true
+    options.port = server.address().port
+
+    console.log( 'toukei server listening on port: ' + server.address().port )
+
+    scheduleFlush( options ) // start flushing
+    scheduleSnapshot( options ) // start snapshots
+
+    if ( !options.disableSelfReports ) scheduleSelfReport( options )
+
+    api.options = Object.assign( {}, options )
+
+    if ( typeof callback === 'function' ) {
+      callback( null, api )
+    }
+  } )
+
+  server.on( 'error', function ( err ) {
+    if ( typeof callback === 'function' ) {
+      callback( err )
+    }
+  } )
+
+  return api // backwards compatability
 }
 
 module.exports = createServer
