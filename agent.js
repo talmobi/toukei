@@ -62,7 +62,9 @@ function createAgent ( options ) {
         data: lines.join( '\n' )
       }, function ( err, res, body ) {
         if ( err ) {
-          console.log( err )
+          if ( !options.silent ) {
+            console.log( err )
+          }
         } else {
           if ( options.verbose ) {
             console.log(
