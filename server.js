@@ -283,6 +283,11 @@ function scheduleSnapshot ( options ) {
 }
 
 function createServer ( options, callback ) {
+  if ( typeof options === 'function' ) {
+    callback = options
+    options = {}
+  }
+
   options = options || {}
 
   if ( typeof options.callback === 'function' ) callback = options.callback
