@@ -28,4 +28,3 @@ module.exports = {
   parseStatString: parseStatString,
   parseLines: parseLines
 }
-
