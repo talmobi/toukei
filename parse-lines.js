@@ -1,4 +1,4 @@
-function parseLine ( line ) {
+function parseLines ( line ) {
   if ( typeof line !== 'string' ) {
     console.log( line )
     throw new Error( 'Invalid line protocol -- failed to parse' )
@@ -48,4 +48,4 @@ function parseLine ( line ) {
   return metrics
 }
 
-module.exports = parseLine
+module.exports = parseLines
