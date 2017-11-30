@@ -8,9 +8,10 @@
 // gauges       g -- gague
 // sets:        s
 
-var dreq = require( 'dasu' ).req
+var dasu = require( 'dasu' )
 
-var parseLine = require( './parse-line.js' )
+var parseLines = require( './parse-lines.js' )
+var parseStatString = require( './parse-stat-string.js' )
 
 // heavily inspired by statsd
 function createAgent ( options ) {
@@ -48,31 +49,30 @@ function createAgent ( options ) {
     // TODO send to server
 
     if ( lines.length > 0 ) {
-      dreq({
-        method: 'POST',
-
-        protocol: address.protocol,
-
-        host: address.host,
-        port: address.port,
-        path: address.path,
-
-        headers: options.headers || {},
-
-        data: lines.join( '\n' )
-      }, function ( err, res, body ) {
-        if ( err ) {
-          if ( !options.silent ) {
-            console.log( err )
-          }
-        } else {
-          if ( options.verbose ) {
-            console.log(
-              'toukei agent: req sent, res.statusCode: ' + res.statusCode
-            )
+      dasu.req(
+        {
+          method: 'POST',
+          protocol: address.protocol,
+          host: address.host,
+          port: address.port,
+          path: address.path,
+          headers: options.headers || {},
+          data: lines.join( '\n' )
+        },
+        function ( err, res, body ) {
+          if ( err ) {
+            if ( !options.silent ) {
+              console.log( err )
+            }
+          } else {
+            if ( options.verbose ) {
+              console.log(
+                'toukei agent: req sent, res.statusCode: ' + res.statusCode
+              )
+            }
           }
         }
-      })
+      )
     }
   }
 
@@ -87,24 +87,19 @@ function createAgent ( options ) {
   scheduleNextFlush()
 
   var api = {}
+
   api.send = function ( metric ) {
-    var metrics = parseLine( metric )
+    var metrics = parseLines( metric )
 
     metrics.forEach(function ( metric ) {
       lines.push( metric.rawLine )
     })
   }
 
-  return api
-}
+  api._parseLines = parseLines
+  api.parseStatString = parseStatString
 
-function isValidLineProtocol ( line ) {
-  try {
-    var metrics = parseLine( line )
-    return true
-  } catch ( err ) {
-    return false
-  }
+  return api
 }
 
 module.exports = createAgent
