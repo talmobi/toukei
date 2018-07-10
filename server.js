@@ -336,7 +336,7 @@ function createServer ( options, callback ) {
 
   var app = express()
   var server = http.createServer( app )
-  var io = require( 'socket.io' )( server )
+  var io = require( 'kiite' )( server )
 
   options.app = app
   options.server = server
@@ -448,11 +448,11 @@ function createServer ( options, callback ) {
   })
 
   io.on( 'connection', function ( socket ) {
-    var len = io.clients().server.engine.clientsCount
+    var len = io.clientsConnected
     console.log( 'obapp server: socket client connected, sockets.length: ' + len )
 
     socket.on( 'disconnect', function () {
-      var len = io.clients().server.engine.clientsCount
+      var len = io.clientsConnected
       console.log( 'obapp server: socket client disconnected, sockets.length: ' + len )
     })
   })
