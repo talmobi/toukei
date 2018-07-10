@@ -20,12 +20,12 @@
     "email": "talmo.christian@gmail.com"
   },
   "dependencies": {
-    "body-parser": "^1.17.2",
-    "cors": "^2.8.4",
+    "body-parser": "~1.18.3",
+    "cors": "~2.8.4",
     "cpu-timer": "0.0.1",
-    "dasu": "0.0.21",
-    "express": "^4.15.4",
-    "socket.io": "^2.0.3"
+    "dasu": "0.0.23",
+    "express": "~4.16.3",
+    "kiite": "~0.1.0"
   },
   "devDependencies": {}
 }
